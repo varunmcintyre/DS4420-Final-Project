@@ -1,0 +1,26 @@
+---
+title: "Hotels_CF"
+output: html_document
+---
+
+```{r}
+data <- read.csv('Datafiniti_Hotel_Reviews.csv')
+```
+
+```{r}
+# keep only hotel names, reviewer usernames, and their rating
+df <- subset(data, select=c('name', 'reviews.username', 'reviews.rating'))
+# keep only hotels that have a minimum of 5 ratings
+cf_df <- df[df$name %in% names(which(table(df$name) >= 5)), ]
+# remove "A verified traveler", "Anonymous", "A Traveler", and "A TripAdvisor Member" to avoid multiple people counting as one
+cf_df <- subset(cf_df, !(reviews.username %in% c("A verified traveler", "Anonymous", "A Traveler", "A TripAdvisor Member")))
+```
+
+Item-Item
+506 total hotels
+
+```{r}
+library(tidyr)
+cf_table <- pivot_wider(cf_df, names_from = name, values_from = reviews.rating, id_cols = reviews.username)
+```
+
