@@ -25,85 +25,83 @@ cf_df <- summarize(cf_df, reviews.rating = mean(reviews.rating))
 cf_table <- pivot_wider(cf_df, names_from = name, values_from = reviews.rating, id_cols = reviews.username)
 
 # make the users the rows
-rownames(cf_table) <- cf_table$reviews.username
+users <- cf_table$reviews.username
 cf_table$reviews.username <- NULL
-```
-```{r}
+rownames(cf_table) <- users
 ```
 
-Item-Item
-506 total hotels
-
 ```{r}
-item_item_cf <- function(df, target, sim_metric, k) {
+item_item_cf <- function(df, target_user, k) {
   
-  target_row <- df[target, ]
-  
-  # exit function if target isn't in data
-  if (!(target %in% rownames(df))) {
-    print(paste("Error:", target, "not found in the dataset."))
-    return(NULL)
-  }
-  
-  # scale columns
   data_mat <- as.matrix(df)
-  data_mat_scaled <- sweep(data_mat, 2, colMeans(data_mat, na.rm = TRUE), "-")
   
-  # pairwise similarity scores
-  sim_scores <- matrix(0, ncol = ncol(data_mat_scaled), nrow = ncol(data_mat_scaled))
-  for (i in 1:(ncol(data_mat_scaled) - 1)) {
-    for (j in (i + 1):ncol(data_mat_scaled)) {
-      ItemA <- data_mat_scaled[, i]
-      ItemB <- data_mat_scaled[, j]
-      shared <- !is.na(ItemA) & !is.na(ItemB)
-      
-      if (sim_metric == "Cosine") {
-        sim <- sum(ItemA[shared] * ItemB[shared]) / 
-               (sqrt(sum(ItemA[shared]^2)) * sqrt(sum(ItemB[shared]^2)))
-      } else if (sim_metric == "L2") {
-        sim <- -sqrt(sum((ItemA[shared] - ItemB[shared])^2))
+  # if the user isn't in the dataset, return that they're not found
+  user_index <- which(rownames(data_mat) == target_user)
+  if (length(user_index) == 0) {
+    return(paste("Error:", target_user, "not found in the dataset."))
+  }
+  
+  # Center each item
+  item_means <- colMeans(data_mat, na.rm = TRUE)
+  data_centered <- sweep(data_mat, 2, item_means, FUN = "-")
+  
+  # Compute pairwise cosine similarities between items
+  n_items <- ncol(data_centered)
+  sim_scores <- matrix(NA, n_items, n_items)
+  for (i in 1:(n_items - 1)) {
+    for (j in (i + 1):n_items) {
+      A <- data_centered[, i]
+      B <- data_centered[, j]
+      shared <- !is.na(A) & !is.na(B)
+      if (sum(shared) > 0) {
+        # cosine similarity
+        sim <- sum(A[shared] * B[shared]) / (sqrt(sum(A[shared]^2)) * sqrt(sum(B[shared]^2)))
+        sim_scores[i, j] <- sim
+        sim_scores[j, i] <- sim
       }
-      
-      sim_scores[i, j] <- sim
-      sim_scores[j, i] <- sim
     }
   }
   
-  # min max scale
   diag(sim_scores) <- NA
-  sim_scaled <- apply(sim_scores, 2,
-                      function(x) (x - min(x, na.rm = TRUE)) / (max(x, na.rm = TRUE) - min(x, na.rm = TRUE)))
-  sim_scaled <- as.data.frame(sim_scaled)
+  
   # rename rows and columns to item names
-  colnames(sim_scaled) <- colnames(df)
-  rownames(sim_scaled) <- colnames(df)
+  colnames(sim_scores) <- colnames(df)
+  rownames(sim_scores) <- colnames(df)
   
-  # weighted averages
-  for (item in colnames(df)) {
-    target_rating <- df[target, item]
-    if (is.na(target_rating)) {
-      weight_avg <- 0
+  # calculate weighted averages
+  preds <- numeric(ncol(data_mat))
+  names(preds) <- colnames(data_mat)
+  for (j in 1:ncol(data_mat)) {
+    if (is.na(data_mat[user_index, j])) {
+      sims <- sim_scores[j, ]
+      rated_items <- which(!is.na(data_mat[user_index, ]))
+      sims[rated_items[is.na(sims[rated_items])]] <- 0
+      
       # get the k most similar items to the current item
-      k_similar <- head(sim_scaled[order(-sim_scaled[[item]]), item], k)
-      sim_items <- names(k_similar)
-      for (sim_item in sim_items) {
-        # use their mean if any of the similar students have a NaN value for that rating
-        if (is.na(df[target, sim_item])) {
-          weight_avg <- mean(df[[sim_item]], na.rm = TRUE)
-          break
-        }
-        weight_avg <- weight_avg + (k_similar[sim_item] * df[target, sim_item])
+      k_similar <- order(sims[rated_items], decreasing = TRUE)[1:min(k, length(rated_items))]
+      sim_items <- rated_items[k_similar]
+      
+      # get weights and ratings to calculate weighted averages
+      weights <- sims[sim_items]
+      ratings <- data_centered[user_index, sim_items]
+      
+      # make prediction using weighted average
+      if (sum(weights) > 0) {
+        preds[j] <- item_means[j] + sum(weights * ratings) / sum(abs(weights))
+      } else {
+        preds[j] <- item_means[j]
       }
-  
-      if (weight_avg != mean(df[[sim_item]], na.rm = TRUE)) {
-        weight_avg <- weight_avg / sum(k_similar, na.rm = TRUE)
-      }
-  
-      print(paste0(target, " pred. rating for ", item, ": ", round(weight_avg,2)))
+    } else {
+      preds[j] <- NA
     }
   }
-
-  return(NULL)
+  
+  # return top 5 recommended hotels
+  ratings_sorted <- sort(preds, decreasing = TRUE, na.last = NA)
+  return(head(ratings_sorted, 5))
 }
 ```
 
+```{r}
+item_item_cf(cf_table, 'Berniebear88', 3)
+```
