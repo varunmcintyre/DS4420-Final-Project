@@ -96,12 +96,13 @@ item_item_cf <- function(df, target_user, k) {
     }
   }
   
-  # return top 5 recommended hotels
+  # return sorted recommended hotels
   ratings_sorted <- sort(preds, decreasing = TRUE, na.last = NA)
-  return(head(ratings_sorted, 5))
+  return(ratings_sorted)
 }
 ```
 
 ```{r}
-item_item_cf(cf_table, 'Berniebear88', 3)
+predicted_ratings <- item_item_cf(cf_table, 'DebMurphy57', 3)
+print(predicted_ratings)
 ```
