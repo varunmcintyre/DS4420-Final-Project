@@ -72,11 +72,11 @@ item_item_cf <- function(df, target_user, k) {
   preds <- numeric(ncol(data_mat))
   names(preds) <- colnames(data_mat)
   for (j in 1:ncol(data_mat)) {
+    # extract similarity scores and already rated items
     if (is.na(data_mat[user_index, j])) {
       sims <- sim_scores[j, ]
       rated_items <- which(!is.na(data_mat[user_index, ]))
-      sims[rated_items[is.na(sims[rated_items])]] <- 0
-      
+
       # get the k most similar items to the current item
       k_similar <- order(sims[rated_items], decreasing = TRUE)[1:min(k, length(rated_items))]
       sim_items <- rated_items[k_similar]
@@ -86,9 +86,10 @@ item_item_cf <- function(df, target_user, k) {
       ratings <- data_centered[user_index, sim_items]
       
       # make prediction using weighted average
-      if (sum(weights) > 0) {
+      if (sum(weights, na.rm=TRUE) > 0) {
         preds[j] <- item_means[j] + sum(weights * ratings) / sum(abs(weights))
       } else {
+      # use item mean for prediction if no weights available
         preds[j] <- item_means[j]
       }
     } else {
@@ -103,6 +104,7 @@ item_item_cf <- function(df, target_user, k) {
 ```
 
 ```{r}
+# return predictions for all missing ratings for a given user
 predicted_ratings <- item_item_cf(cf_table, 'DebMurphy57', 3)
 print(predicted_ratings)
 ```
